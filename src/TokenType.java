@@ -1,0 +1,50 @@
+public enum TokenType {
+    IDENTIFIER,
+
+    INTEGER,
+    FLOAT,
+    CHAR,
+    STRING,
+
+    KEYWORD,
+
+    PLUS,
+    MINUS,
+    MULTIPLY,
+    DIVIDE,
+    MOD,
+
+    EQUAL_EQUAL,
+    NOT_EQUAL,
+    LESS,
+    LESS_EQUAL,
+    GREATER,
+    GREATER_EQUAL,
+
+    AND,
+    OR,
+    NOT,
+
+    ASSIGN,
+    PLUS_ASSIGN,
+    MINUS_ASSIGN,
+    MULTIPLY_ASSIGN,
+    DIVIDE_ASSIGN,
+    MOD_ASSIGN,
+
+    INCREMENT,
+    DECREMENT,
+
+    SEMICOLON,
+    COMMA,
+    DOT,
+    LEFT_PAREN,
+    RIGHT_PAREN,
+    LEFT_BRACE,
+    RIGHT_BRACE,
+    LEFT_BRACKET,
+    RIGHT_BRACKET,
+
+    ERROR,
+    EOF
+}
