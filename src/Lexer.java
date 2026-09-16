@@ -492,12 +492,9 @@ public class Lexer {
         buffer.Advance();
 
         while (!buffer.IsEOF()) {
-
             char current = buffer.Current();
 
-            if (current == '\n'
-                    || current == '\r') {
-
+            if (current == '\n' || current == '\r') {
                 break;
             }
 
@@ -518,12 +515,9 @@ public class Lexer {
         buffer.Advance();
 
         while (!buffer.IsEOF()) {
-
             /*
             * Encontrou */
-            if (buffer.Current() == '*'
-                    && buffer.Peek() == '/') {
-
+            if (buffer.Current() == '*' && buffer.Peek() == '/') {
                 lexeme.append(buffer.Current());
                 buffer.Advance();
 
@@ -551,7 +545,6 @@ public class Lexer {
     }
 
     private String DecodeString(String value) {
-
         StringBuilder result = new StringBuilder();
 
         for (int i = 0; i < value.length(); i++) {

@@ -109,7 +109,8 @@ public class DoubleBuffer implements AutoCloseable {
             usingPrimary = false;
             position = 0;
 
-        } else {
+        } 
+        else {
             /*
              * Terminou buffer 2.
              * Agora podemos reutilizar buffer 1.
@@ -152,5 +153,5 @@ public class DoubleBuffer implements AutoCloseable {
 
     @Override
     public void close() throws IOException { reader.close(); }
-    
+
 }
