@@ -3,7 +3,7 @@ import java.io.Reader;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
-public class DoubleBuffer {
+public class DoubleBuffer implements AutoCloseable {
 
     private static final int BUFFER_SIZE = 32;
 
@@ -15,167 +15,143 @@ public class DoubleBuffer {
     private int primarySize;
     private int secondarySize;
 
-    private boolean primaryActive;
+    private boolean usingPrimary;
     private int position;
 
-    private boolean endOfFile;
+    private boolean eof;
 
     public DoubleBuffer(Path file) throws IOException {
-
         reader = Files.newBufferedReader(file);
 
         primaryBuffer = new char[BUFFER_SIZE];
         secondaryBuffer = new char[BUFFER_SIZE];
 
-        primarySize = 0;
-        secondarySize = 0;
-
-        primaryActive = true;
+        usingPrimary = true;
         position = 0;
-
-        endOfFile = false;
-
-        LoadPrimary();
-    }
-
-    private void LoadPrimary() throws IOException {
+        eof = false;
 
         primarySize = reader.read(primaryBuffer);
 
-        if (primarySize == -1) {
+        if (primarySize < 0) {
             primarySize = 0;
+            eof = true;
         }
-    }
 
-    private void LoadSecondary() throws IOException {
-
-        secondarySize = reader.read(secondaryBuffer);
-
-        if (secondarySize == -1) {
-            secondarySize = 0;
-        }
+        secondarySize = 0;
     }
 
     public char Current() {
+        if (eof) return '\0';
 
-        if (position >= CurrentSize()) {
-            return '\0';
-        }
-
-        if (primaryActive) {
-            return primaryBuffer[position];
-        }
+        if (usingPrimary) return primaryBuffer[position];
 
         return secondaryBuffer[position];
     }
 
     public char Peek() throws IOException {
+        if (eof) return '\0';
 
-        // Ainda existe posição dentro do buffer atual
-        if (position + 1 < CurrentSize()) {
+        /*
+         * Dentro do buffer atual.
+         */
+        if (position + 1 < CurrentSize()) return Get(position + 1);
 
-            if (primaryActive) {
-                return primaryBuffer[position + 1];
-            }
+        /*
+         * Estamos no último caractere do buffer 1.
+         *
+         * O buffer 2 será carregado antecipadamente.
+         */
+        if (usingPrimary) {
+            if (secondarySize == 0) LoadSecondary();
 
-            return secondaryBuffer[position + 1];
-        }
-
-        // Estamos no último caractere do buffer primário.
-        // Precisamos olhar o primeiro caractere do secundário.
-        if (primaryActive) {
-
-            if (secondarySize == 0) {
-                LoadSecondary();
-            }
-
-            if (secondarySize > 0) {
-                return secondaryBuffer[0];
-            }
+            if (secondarySize > 0) return secondaryBuffer[0];
 
             return '\0';
         }
 
-        // Estamos no último caractere do secundário.
-        // O próximo caractere ainda não está carregado.
-        if (position + 1 >= secondarySize) {
-
-            LoadPrimary();
-
-            if (primarySize > 0) {
-                return primaryBuffer[0];
-            }
-        }
-
+        /*
+         * Estamos no final do buffer 2.
+         *
+         * Aqui ainda não carregamos o buffer 1,
+         * porque ele será reutilizado somente depois
+         * que o buffer 2 for consumido.
+         */
         return '\0';
     }
 
-    public void Advance() throws IOException {
+    private char Get(int index) {
+        if (usingPrimary) return primaryBuffer[index];
 
-        if (IsEOF()) {
-            return;
-        }
+        return secondaryBuffer[index];
+    }
+
+    public void Advance() throws IOException {
+        if (eof) return;
 
         position++;
 
-        if (position < CurrentSize()) {
-            return;
-        }
+        if (position < CurrentSize()) return;
 
-        SwitchBuffer();
-    }
+        if (usingPrimary) {
 
-    private void SwitchBuffer() throws IOException {
-
-        if (primaryActive) {
-
-            // Garante que o secundário esteja carregado.
+            /*
+             * Terminou buffer 1.
+             */
             if (secondarySize == 0) {
                 LoadSecondary();
             }
 
             if (secondarySize == 0) {
-                endOfFile = true;
-                position = 0;
+                eof = true;
                 return;
             }
 
-            primaryActive = false;
+            usingPrimary = false;
             position = 0;
 
-            return;
-        }
+        } 
+        else {
+            /*
+             * Terminou buffer 2.
+             * Agora podemos reutilizar buffer 1.
+             */
+            LoadPrimary();
 
-        // Secundário terminou.
-        // Recarrega o primário com a próxima parte do arquivo.
-        LoadPrimary();
+            if (primarySize == 0) {
+                eof = true;
+                return;
+            }
 
-        if (primarySize == 0) {
-            endOfFile = true;
+            secondarySize = 0;
+
+            usingPrimary = true;
             position = 0;
-            return;
         }
-
-        primaryActive = true;
-        position = 0;
     }
 
     private int CurrentSize() {
+        return usingPrimary ? primarySize : secondarySize;
+    }
 
-        if (primaryActive) {
-            return primarySize;
+    private void LoadPrimary() throws IOException {
+        primarySize = reader.read(primaryBuffer);
+
+        if (primarySize < 0) {
+            primarySize = 0;
         }
-
-        return secondarySize;
     }
 
-    public boolean IsEOF() {
+    private void LoadSecondary() throws IOException {
+        secondarySize = reader.read(secondaryBuffer);
 
-        return endOfFile;
+        if (secondarySize < 0) {
+            secondarySize = 0;
+        }
     }
 
-    public void Close() throws IOException {
+    public boolean IsEOF() { return eof; }
 
-        reader.close();
-    }
+    @Override
+    public void close() throws IOException { reader.close(); }
+
 }
