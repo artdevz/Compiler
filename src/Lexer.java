@@ -1,13 +1,11 @@
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
 public class Lexer {
 
-    private final String source;
-
-    private int begin = 0;
-    private int forward = 0;
+    private final DoubleBuffer buffer;
 
     private final SymbolTable symbolTable;
     private final TokenTable tokenTable;
@@ -45,262 +43,236 @@ public class Lexer {
         "null"
     );
 
-    public Lexer(String source, SymbolTable symbolTable, TokenTable tokenTable) {
-        this.source = source;
+    public Lexer(DoubleBuffer buffer, SymbolTable symbolTable, TokenTable tokenTable) {
+        this.buffer = buffer;
         this.symbolTable = symbolTable;
         this.tokenTable = tokenTable;
     }
 
-    public List<Token> Analyze() {
+    public List<Token> Analyze() throws IOException {
         List<Token> tokens = new ArrayList<>();
 
-        while (forward < source.length()) {
+        while (!buffer.IsEOF()) {
+            while (!buffer.IsEOF() && Character.isWhitespace(buffer.Current())) {
 
-            while (forward < source.length()
-                    && Character.isWhitespace(source.charAt(forward))) {
-                forward++;
+                buffer.Advance();
             }
 
-            if (forward >= source.length()) {
-                break;
-            }
-
-            begin = forward;
-
-            char current = source.charAt(forward);
+            if (buffer.IsEOF()) break;
 
             /*
-             * Comentários
-             */
-            if (current == '/' && forward + 1 < source.length()) {
+            * Comentários
+            */
+            if (buffer.Current() == '/' && buffer.Peek() == '/') {
+                SkipLineComment();
 
-                char next = source.charAt(forward + 1);
+                continue;
+            }
 
-                if (next == '/') {
-                    SkipLineComment();
-                    continue;
+            if (buffer.Current() == '/' && buffer.Peek() == '*') {
+                Token token = SkipBlockComment();
+
+                if (token != null) {
+                    tokens.add(token);
+                    tokenTable.Add(token);
                 }
 
-                if (next == '*') {
-                    Token token = SkipBlockComment();
-
-                    if (token != null) {
-                        tokens.add(token);
-                        tokenTable.Add(token);
-                    }
-
-                    continue;
-                }
+                continue;
             }
 
             /*
-             * Identificador ou palavra reservada
-             */
-            if (Character.isLetter(current) || current == '_') {
+            * Identificador / palavra reservada
+            */
+            if (Character.isLetter(buffer.Current()) || buffer.Current() == '_') {
 
                 Token token = ReadIdentifier();
 
                 tokens.add(token);
                 tokenTable.Add(token);
+
+                continue;
             }
 
             /*
-             * Número
-             */
-            else if (Character.isDigit(current)) {
-
+            * Número
+            */
+            if (Character.isDigit(buffer.Current())) {
                 Token token = ReadNumber();
 
                 tokens.add(token);
                 tokenTable.Add(token);
+
+                continue;
             }
 
             /*
-             * Caractere
-             */
-            else if (current == '\'') {
-
+            * Caractere
+            */
+            if (buffer.Current() == '\'') {
                 Token token = ReadChar();
 
                 tokens.add(token);
                 tokenTable.Add(token);
+
+                continue;
             }
 
             /*
-             * String
-             */
-            else if (current == '"') {
-
+            * String
+            */
+            if (buffer.Current() == '"') {
                 Token token = ReadString();
 
                 tokens.add(token);
                 tokenTable.Add(token);
+
+                continue;
             }
 
             /*
-             * Operadores e delimitadores
-             */
-            else {
+            * Operadores / delimitadores
+            */
+            Token token = ReadOperator();
 
-                Token token = ReadOperator();
-
-                tokens.add(token);
-                tokenTable.Add(token);
-            }
+            tokens.add(token);
+            tokenTable.Add(token);
         }
 
         return tokens;
     }
 
-    private Token ReadIdentifier() {
+    private Token ReadIdentifier() throws IOException {
+        StringBuilder lexeme = new StringBuilder();
 
-        while (forward < source.length()) {
+        while (!buffer.IsEOF()) {
 
-            char current = source.charAt(forward);
+            char current = buffer.Current();
 
             if (Character.isLetterOrDigit(current) || current == '_') {
-                forward++;
-            }
-            else {
-                break;
-            }
+                lexeme.append(current);
+                buffer.Advance();
+
+            } 
+            else break;
         }
 
-        String lexeme = source.substring(begin, forward);
+        String value = lexeme.toString();
 
-        if (KEYWORDS.contains(lexeme)) {
+        if (KEYWORDS.contains(value)) {
             return new Token(
                 TokenType.KEYWORD,
-                lexeme,
+                value,
                 null
             );
         }
 
-        symbolTable.Add(lexeme);
+        symbolTable.Add(value);
 
         return new Token(
             TokenType.IDENTIFIER,
-            lexeme,
+            value,
             null
         );
     }
 
-    private Token ReadNumber() {
+    private Token ReadNumber() throws IOException {
+        StringBuilder lexeme = new StringBuilder();
 
         /*
-         * Parte inteira
-         */
-        while (forward < source.length()
-                && Character.isDigit(source.charAt(forward))) {
-            forward++;
+        * Parte inteira
+        */
+        while (!buffer.IsEOF() && Character.isDigit(buffer.Current())) {
+
+            lexeme.append(buffer.Current());
+            buffer.Advance();
         }
 
         /*
-         * Número seguido de letra ou _
-         *
-         * Exemplo:
-         * 123abc
-         * 10teste
-         */
-        if (forward < source.length()) {
-
-            char current = source.charAt(forward);
+        * Número seguido de letra ou _
+        *
+        * 123abc
+        */
+        if (!buffer.IsEOF()) {
+            char current = buffer.Current();
 
             if (Character.isLetter(current) || current == '_') {
+                while (!buffer.IsEOF()) {
+                    current = buffer.Current();
 
-                while (forward < source.length()) {
+                    if (Character.isLetterOrDigit(current) || current == '_') {
+                        lexeme.append(current);
+                        buffer.Advance();
 
-                    current = source.charAt(forward);
-
-                    if (Character.isLetterOrDigit(current)
-                            || current == '_') {
-                        forward++;
-                    }
-                    else {
-                        break;
-                    }
+                    } 
+                    else break;
                 }
-
-                String lexeme = source.substring(begin, forward);
 
                 return new Token(
                     TokenType.ERROR,
-                    lexeme,
+                    lexeme.toString(),
                     null
                 );
             }
         }
 
         /*
-         * Decimal usando vírgula
-         *
-         * Exemplo:
-         * 3,14
-         */
-        if (forward < source.length()
-                && source.charAt(forward) == ','
-                && forward + 1 < source.length()
-                && Character.isDigit(source.charAt(forward + 1))) {
+        * Decimal usando vírgula.
+        *
+        * 3,14
+        */
+        if (!buffer.IsEOF()
+                && buffer.Current() == ','
+                && Character.isDigit(buffer.Peek())
+        ) {
+            lexeme.append(buffer.Current());
+            buffer.Advance();
 
-            forward++;
+            while (!buffer.IsEOF() && Character.isDigit(buffer.Current())) {
 
-            while (forward < source.length()
-                    && Character.isDigit(source.charAt(forward))) {
-                forward++;
+                lexeme.append(buffer.Current());
+                buffer.Advance();
             }
-
-            String lexeme = source.substring(begin, forward);
 
             return new Token(
                 TokenType.ERROR,
-                lexeme,
+                lexeme.toString(),
                 null
             );
         }
 
         /*
-         * Número real
-         *
-         * Exemplo:
-         * 3.14
-         * 1.70f
-         */
-        if (forward < source.length()
-                && source.charAt(forward) == '.') {
+        * Número real
+        *
+        * 3.14
+        * 1.70f
+        */
+        if (!buffer.IsEOF() && buffer.Current() == '.') {
+            if (Character.isDigit(buffer.Peek())) {
 
-            /*
-             * Verifica se existe um dígito depois do ponto.
-             *
-             * 3.14 -> válido
-             * 3.   -> erro
-             */
-            if (forward + 1 < source.length()
-                    && Character.isDigit(source.charAt(forward + 1))) {
+                lexeme.append(buffer.Current());
+                buffer.Advance();
 
-                forward++;
-
-                while (forward < source.length()
-                        && Character.isDigit(source.charAt(forward))) {
-                    forward++;
+                while (!buffer.IsEOF() && Character.isDigit(buffer.Current())) {
+                    lexeme.append(buffer.Current());
+                    buffer.Advance();
                 }
 
                 /*
-                 * Sufixo f/F
-                 *
-                 * 1.70f
-                 */
-                if (forward < source.length()
-                        && (source.charAt(forward) == 'f'
-                        || source.charAt(forward) == 'F')) {
-                    forward++;
+                * Sufixo f/F
+                */
+                if (!buffer.IsEOF()
+                        && (buffer.Current() == 'f'
+                        || buffer.Current() == 'F')
+                ) {
+                    lexeme.append(buffer.Current());
+                    buffer.Advance();
                 }
 
-                String lexeme = source.substring(begin, forward);
+                String value = lexeme.toString();
 
-                String numericPart = lexeme;
+                String numericPart = value;
 
-                if (numericPart.endsWith("f")
-                        || numericPart.endsWith("F")) {
+                if (numericPart.endsWith("f") || numericPart.endsWith("F")) {
 
                     numericPart = numericPart.substring(
                         0,
@@ -310,139 +282,125 @@ public class Lexer {
 
                 return new Token(
                     TokenType.FLOAT,
-                    lexeme,
+                    value,
                     Float.parseFloat(numericPart)
                 );
             }
 
             /*
-             * Caso:
-             * 10.
-             */
-            forward++;
-
-            String lexeme = source.substring(begin, forward);
+            * 10.
+            */
+            lexeme.append(buffer.Current());
+            buffer.Advance();
 
             return new Token(
                 TokenType.ERROR,
-                lexeme,
+                lexeme.toString(),
                 null
             );
         }
 
-        /*
-         * Inteiro
-         */
-        String lexeme = source.substring(begin, forward);
+        String value = lexeme.toString();
 
         return new Token(
             TokenType.INTEGER,
-            lexeme,
-            Integer.parseInt(lexeme)
+            value,
+            Integer.parseInt(value)
         );
     }
 
-    private Token ReadChar() {
+    private Token ReadChar() throws IOException {
+        StringBuilder lexeme = new StringBuilder();
 
         /*
-         * Consome o primeiro '
-         */
-        forward++;
+        * Primeiro '
+        */
+        lexeme.append(buffer.Current());
+        buffer.Advance();
 
-        /*
-         * Fim do arquivo
-         */
-        if (forward >= source.length()) {
-
+        if (buffer.IsEOF()) {
             return new Token(
                 TokenType.ERROR,
-                source.substring(begin, forward),
+                lexeme.toString(),
                 null
             );
         }
 
-        char current = source.charAt(forward);
+        char current = buffer.Current();
 
         /*
-         * Caractere escapado
-         *
-         * Exemplos:
-         * '\n'
-         * '\t'
-         * '\\'
-         * '\''
-         */
+        * Escape
+        */
         if (current == '\\') {
+            lexeme.append(current);
+            buffer.Advance();
 
-            forward++;
-
-            if (forward >= source.length()) {
-
+            if (buffer.IsEOF()) {
                 return new Token(
                     TokenType.ERROR,
-                    source.substring(begin, forward),
+                    lexeme.toString(),
                     null
                 );
             }
 
-            forward++;
+            lexeme.append(buffer.Current());
+            buffer.Advance();
         }
 
         /*
-         * Caractere normal
-         *
-         * Exemplo:
-         * 'A'
-         */
+        * Caractere normal
+        */
         else {
-
             if (current == '\n'
                     || current == '\r'
                     || current == '\'') {
 
-                forward++;
+                lexeme.append(current);
+                buffer.Advance();
 
                 return new Token(
                     TokenType.ERROR,
-                    source.substring(begin, forward),
+                    lexeme.toString(),
                     null
                 );
             }
 
-            forward++;
+            lexeme.append(current);
+            buffer.Advance();
         }
 
         /*
-         * Deve existir o ' de fechamento
-         */
-        if (forward >= source.length()
-                || source.charAt(forward) != '\'') {
+        * Precisa encontrar '
+        */
+        if (buffer.IsEOF() || buffer.Current() != '\'') {
 
-            while (forward < source.length()
-                    && source.charAt(forward) != '\''
-                    && source.charAt(forward) != '\n'
-                    && source.charAt(forward) != '\r') {
-                forward++;
+            while (!buffer.IsEOF()
+                    && buffer.Current() != '\''
+                    && buffer.Current() != '\n'
+                    && buffer.Current() != '\r'
+            ) {
+                lexeme.append(buffer.Current());
+                buffer.Advance();
             }
 
-            if (forward < source.length()
-                    && source.charAt(forward) == '\'') {
-                forward++;
+            if (!buffer.IsEOF() && buffer.Current() == '\'') {
+
+                lexeme.append(buffer.Current());
+                buffer.Advance();
             }
 
             return new Token(
                 TokenType.ERROR,
-                source.substring(begin, forward),
+                lexeme.toString(),
                 null
             );
         }
 
         /*
-         * Consome o ' de fechamento
-         */
-        forward++;
-
-        String lexeme = source.substring(begin, forward);
+        * '
+        */
+        lexeme.append(buffer.Current());
+        buffer.Advance();
 
         String value = DecodeChar(
             lexeme.substring(1, lexeme.length() - 1)
@@ -450,47 +408,44 @@ public class Lexer {
 
         return new Token(
             TokenType.CHAR,
-            lexeme,
+            lexeme.toString(),
             value
         );
     }
 
-    private Token ReadString() {
+    private Token ReadString() throws IOException {
+        StringBuilder lexeme = new StringBuilder();
 
         /*
-         * Consome o primeiro "
-         */
-        forward++;
+        * Primeiro "
+        */
+        lexeme.append(buffer.Current());
+        buffer.Advance();
 
-        while (forward < source.length()) {
-
-            char current = source.charAt(forward);
+        while (!buffer.IsEOF()) {
+            char current = buffer.Current();
 
             /*
-             * Escape
-             *
-             * Exemplo:
-             * "Arthur\nDantas"
-             */
+            * Escape
+            */
             if (current == '\\') {
+                lexeme.append(current);
+                buffer.Advance();
 
-                forward++;
-
-                if (forward < source.length()) {
-                    forward++;
+                if (!buffer.IsEOF()) {
+                    lexeme.append(buffer.Current());
+                    buffer.Advance();
                 }
 
                 continue;
             }
 
             /*
-             * String terminou
-             */
+            * Fechamento
+            */
             if (current == '"') {
-
-                forward++;
-
-                String lexeme = source.substring(begin, forward);
+                lexeme.append(current);
+                buffer.Advance();
 
                 String value = DecodeString(
                     lexeme.substring(1, lexeme.length() - 1)
@@ -498,88 +453,99 @@ public class Lexer {
 
                 return new Token(
                     TokenType.STRING,
-                    lexeme,
+                    lexeme.toString(),
                     value
                 );
             }
 
             /*
-             * String não pode quebrar linha
-             */
+            * Quebra de linha
+            */
             if (current == '\n' || current == '\r') {
-
-                String lexeme = source.substring(begin, forward);
 
                 return new Token(
                     TokenType.ERROR,
-                    lexeme,
+                    lexeme.toString(),
                     null
                 );
             }
 
-            forward++;
+            lexeme.append(current);
+            buffer.Advance();
         }
 
         /*
-         * Chegou ao final sem encontrar "
-         */
-        String lexeme = source.substring(begin, forward);
-
+        * EOF sem fechar "
+        */
         return new Token(
             TokenType.ERROR,
-            lexeme,
+            lexeme.toString(),
             null
         );
     }
 
-    private void SkipLineComment() {
-
+    private void SkipLineComment() throws IOException {
         /*
-         * Consome //
-         */
-        forward += 2;
+        * //
+        */
+        buffer.Advance();
+        buffer.Advance();
 
-        while (forward < source.length()
-                && source.charAt(forward) != '\n'
-                && source.charAt(forward) != '\r') {
-            forward++;
+        while (!buffer.IsEOF()) {
+
+            char current = buffer.Current();
+
+            if (current == '\n'
+                    || current == '\r') {
+
+                break;
+            }
+
+            buffer.Advance();
         }
     }
 
-    private Token SkipBlockComment() {
+    private Token SkipBlockComment() throws IOException {
+        StringBuilder lexeme = new StringBuilder();
 
         /*
-         * Consome /*
-         */
-        forward += 2;
+        * /*
+        */
+        lexeme.append(buffer.Current());
+        buffer.Advance();
 
-        while (forward + 1 < source.length()) {
+        lexeme.append(buffer.Current());
+        buffer.Advance();
 
-            if (source.charAt(forward) == '*'
-                    && source.charAt(forward + 1) == '/') {
+        while (!buffer.IsEOF()) {
+
+            /*
+            * Encontrou */
+            if (buffer.Current() == '*'
+                    && buffer.Peek() == '/') {
+
+                lexeme.append(buffer.Current());
+                buffer.Advance();
+
+                lexeme.append(buffer.Current());
+                buffer.Advance();
 
                 /*
-                 * Consome */
-                forward += 2;
-
-                /*
-                 * Comentário é ignorado.
-                 */
+                * Comentário válido.
+                */
                 return null;
             }
 
-            forward++;
+            lexeme.append(buffer.Current());
+            buffer.Advance();
         }
 
         /*
-         * Chegou ao final do arquivo sem encontrar */
-        forward = source.length();
-
-        String lexeme = source.substring(begin, forward);
-
+        * Comentário não fechado.
+        */
         return new Token(
             TokenType.ERROR,
-            lexeme,
+            lexeme.toString(),
             null
         );
     }
@@ -667,20 +633,14 @@ public class Lexer {
         }
     }
 
-    private Token ReadOperator() {
-
-        char current = source.charAt(forward);
-
-        forward++;
+    private Token ReadOperator() throws IOException {
+        char current = buffer.Current();
+        buffer.Advance();
 
         switch (current) {
-
             case '+':
-
-                if (forward < source.length()
-                        && source.charAt(forward) == '+') {
-
-                    forward++;
+                if (!buffer.IsEOF() && buffer.Current() == '+') {
+                    buffer.Advance();
 
                     return new Token(
                         TokenType.INCREMENT,
@@ -689,10 +649,8 @@ public class Lexer {
                     );
                 }
 
-                if (forward < source.length()
-                        && source.charAt(forward) == '=') {
-
-                    forward++;
+                if (!buffer.IsEOF() && buffer.Current() == '=') {
+                    buffer.Advance();
 
                     return new Token(
                         TokenType.PLUS_ASSIGN,
@@ -708,11 +666,8 @@ public class Lexer {
                 );
 
             case '-':
-
-                if (forward < source.length()
-                        && source.charAt(forward) == '-') {
-
-                    forward++;
+                if (!buffer.IsEOF() && buffer.Current() == '-') {
+                    buffer.Advance();
 
                     return new Token(
                         TokenType.DECREMENT,
@@ -721,10 +676,8 @@ public class Lexer {
                     );
                 }
 
-                if (forward < source.length()
-                        && source.charAt(forward) == '=') {
-
-                    forward++;
+                if (!buffer.IsEOF() && buffer.Current() == '=') {
+                    buffer.Advance();
 
                     return new Token(
                         TokenType.MINUS_ASSIGN,
@@ -740,11 +693,8 @@ public class Lexer {
                 );
 
             case '*':
-
-                if (forward < source.length()
-                        && source.charAt(forward) == '=') {
-
-                    forward++;
+                if (!buffer.IsEOF() && buffer.Current() == '=') {
+                    buffer.Advance();
 
                     return new Token(
                         TokenType.MULTIPLY_ASSIGN,
@@ -760,11 +710,8 @@ public class Lexer {
                 );
 
             case '/':
-
-                if (forward < source.length()
-                        && source.charAt(forward) == '=') {
-
-                    forward++;
+                if (!buffer.IsEOF() && buffer.Current() == '=') {
+                    buffer.Advance();
 
                     return new Token(
                         TokenType.DIVIDE_ASSIGN,
@@ -781,10 +728,8 @@ public class Lexer {
 
             case '%':
 
-                if (forward < source.length()
-                        && source.charAt(forward) == '=') {
-
-                    forward++;
+                if (!buffer.IsEOF() && buffer.Current() == '=') {
+                    buffer.Advance();
 
                     return new Token(
                         TokenType.MOD_ASSIGN,
@@ -801,10 +746,8 @@ public class Lexer {
 
             case '=':
 
-                if (forward < source.length()
-                        && source.charAt(forward) == '=') {
-
-                    forward++;
+                if (!buffer.IsEOF() && buffer.Current() == '=') {
+                    buffer.Advance();
 
                     return new Token(
                         TokenType.EQUAL_EQUAL,
@@ -821,10 +764,8 @@ public class Lexer {
 
             case '!':
 
-                if (forward < source.length()
-                        && source.charAt(forward) == '=') {
-
-                    forward++;
+                if (!buffer.IsEOF() && buffer.Current() == '=') {
+                    buffer.Advance();
 
                     return new Token(
                         TokenType.NOT_EQUAL,
@@ -841,10 +782,8 @@ public class Lexer {
 
             case '<':
 
-                if (forward < source.length()
-                        && source.charAt(forward) == '=') {
-
-                    forward++;
+                if (!buffer.IsEOF() && buffer.Current() == '=') {
+                    buffer.Advance();
 
                     return new Token(
                         TokenType.LESS_EQUAL,
@@ -861,10 +800,8 @@ public class Lexer {
 
             case '>':
 
-                if (forward < source.length()
-                        && source.charAt(forward) == '=') {
-
-                    forward++;
+                if (!buffer.IsEOF() && buffer.Current() == '=') {
+                    buffer.Advance();
 
                     return new Token(
                         TokenType.GREATER_EQUAL,
@@ -881,10 +818,8 @@ public class Lexer {
 
             case '&':
 
-                if (forward < source.length()
-                        && source.charAt(forward) == '&') {
-
-                    forward++;
+                if (!buffer.IsEOF() && buffer.Current() == '&') {
+                    buffer.Advance();
 
                     return new Token(
                         TokenType.AND,
@@ -901,10 +836,8 @@ public class Lexer {
 
             case '|':
 
-                if (forward < source.length()
-                        && source.charAt(forward) == '|') {
-
-                    forward++;
+                if (!buffer.IsEOF() && buffer.Current() == '|') {
+                    buffer.Advance();
 
                     return new Token(
                         TokenType.OR,
@@ -990,4 +923,5 @@ public class Lexer {
                 );
         }
     }
+
 }

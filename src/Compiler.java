@@ -1,7 +1,5 @@
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
 
 public class Compiler {
     public static void main(String[] args) throws IOException {
@@ -25,20 +23,14 @@ public class Compiler {
         System.out.println("Compilando: " + path);
 
         try {
-            String code = Files.readString(file);
+            DoubleBuffer buffer = new DoubleBuffer(file);
 
             SymbolTable symbolTable = new SymbolTable();
             TokenTable tokenTable = new TokenTable();
 
-            Lexer lexer = new Lexer(code, symbolTable, tokenTable);
+            Lexer lexer = new Lexer(buffer, symbolTable, tokenTable);
 
             lexer.Analyze();
-
-            /*
-            for (Token token : tokens) {
-                System.out.println(token.GetLexeme());
-            }
-            */
 
             symbolTable.Print();
             tokenTable.Print();
