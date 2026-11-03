@@ -1,3 +1,4 @@
+package lexer;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -14,5 +15,7 @@ public class TokenTable {
             System.out.printf("%-20s %-20s %s%n", token.GetType(), token.GetLexeme(), token.GetAttribute());
         }
     }
+
+    public List<Token> GetTokens() { return tokens; }
 
 }
