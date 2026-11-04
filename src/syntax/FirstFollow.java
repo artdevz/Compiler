@@ -32,15 +32,14 @@ public class FirstFollow {
             changed = false;
 
             for (String nonTerminal : grammar.GetNonTerminals()) {
-                List<List<String>> productions =
-                    grammar.GetProductions().get(nonTerminal);
+                List<List<String>> productions = grammar.GetProductions().get(nonTerminal);
 
-            if (productions == null) {
-                throw new IllegalStateException(
-                        "Não existem produções para o não terminal: "
-                        + nonTerminal
-                );
-            }
+                if (productions == null) {
+                    throw new IllegalStateException(
+                            "Não existem produções para o não terminal: "
+                            + nonTerminal
+                    );
+                }
 
                 for (List<String> production : grammar.GetProductions().get(nonTerminal)) {
                     Set<String> productionFirstSet = FirstOfSequence(production);

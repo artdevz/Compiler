@@ -113,7 +113,7 @@ public class PredictiveParser {
                 
                 Set<String> expected = new LinkedHashSet<>();
 
-                for (String terminal : grammar.GetNonTerminals()) {
+                for (String terminal : grammar.GetTerminals()) {
                     if (parsingTable.GetProduction(top, terminal) != null) {
                         expected.add(terminal);
                     }
